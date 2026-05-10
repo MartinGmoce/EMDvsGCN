@@ -5,11 +5,14 @@ import torch.nn as nn
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler
 from torch.utils.data import TensorDataset, DataLoader
 from st_trader_model import ST_Trader, compute_chebyshev_polynomials
+from gcn_informer_model import GCN_Informer
 
 # ================= 配置与路径 =================
-PROJECT_ROOT = "/Users/martingao/VScode/EMDvsGCN"
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(CURRENT_DIR)) 
 GCN_DATA_DIR = os.path.join(PROJECT_ROOT, "Data", "GCN")
 GRAPH_DIR = os.path.join(PROJECT_ROOT, "Results", "VAE_Features")
 PRED_DIR = os.path.join(PROJECT_ROOT, "Results", "Predictions")
@@ -23,6 +26,14 @@ try:
     from metrics import calculate_metrics, print_metrics, save_metrics
 except ImportError:
     print("⚠️ 未找到 Utils/metrics.py，请确保路径正确！")
+
+# ================= 循环图网络配置 =================
+GRAPH_FILES = [
+    "adj_vae.npy", 
+    "adj_identity.npy", 
+    "adj_pearson.npy", 
+    "adj_random.npy"
+]
 
 # ================= 超参数设置 (服务器满血版) =================
 LOOK_BACK = 60       
@@ -56,7 +67,19 @@ def load_and_align_data(tickers):
             raise ValueError("CSV中没有找到时间列 (tdate)")
             
         df.set_index('datetime', inplace=True)
-        df_feats = df[FEATURES].add_prefix(f"{ticker}_")
+        
+        # 提取需要的特征列
+        df_feats = df[FEATURES].copy()
+        
+        # ==========================================================
+        # 【核心修复】：对成交额等长尾特征进行 Log1p 平滑
+        # 强行将上百倍的极端脉冲压平，防止 GCN 神经元被“击穿归零”
+        # ==========================================================
+        if 'cje' in df_feats.columns:
+            # 使用 log1p (即 log(1+x)) 防止出现 log(0) 报错
+            df_feats['cje'] = np.log1p(df_feats['cje'])
+            
+        df_feats = df_feats.add_prefix(f"{ticker}_")
         df_list.append(df_feats)
         
     combined_df = pd.concat(df_list, axis=1).dropna()
@@ -71,14 +94,15 @@ def build_sliding_windows(data_array, look_back):
         Y.append(data_array[i + look_back, y_indices])
     return np.array(X), np.array(Y)
 
-def train_and_evaluate():
-    adj_matrix = np.load(os.path.join(GRAPH_DIR, "adj_vae.npy"))
+def train_and_evaluate_all_graphs():
+    # ---------------- 步骤 1：全图共用的数据预处理 (只做一次，省时高效) ----------------
+    # 获取节点名称
     df_adj = pd.read_csv(os.path.join(GRAPH_DIR, "adj_vae.csv"), index_col=0)
     tickers = df_adj.columns.tolist()
     num_nodes = len(tickers)
-    
     target_indices = {t: tickers.index(t) for t in TARGET_STOCKS.keys()}
 
+    # 加载与对齐数据
     combined_df = load_and_align_data(tickers)
     raw_data = combined_df.values
     
@@ -86,25 +110,35 @@ def train_and_evaluate():
     train_data = raw_data[:train_size]
     test_data = raw_data[train_size:]
     
-    print("🛠 进行严格的 Min-Max 归一化 (仅在训练集 fit)...")
-    scaler = MinMaxScaler()
+    print("🛠 进行 Z-score 标准化及极值截断 (防爆显存与 NaN 断裂)...")
+    # 【修复1】：改用对趋势更友好的 StandardScaler
+    scaler = StandardScaler()
     train_scaled = scaler.fit_transform(train_data)
     test_scaled = scaler.transform(test_data) 
+    
+    # 【修复2】：金融量化必备的极值截断 (Clip)。强行把超过 ±5 个标准差的“毒数据”压平
+    train_scaled = np.clip(train_scaled, -5.0, 5.0)
+    test_scaled = np.clip(test_scaled, -5.0, 5.0)
     
     close_scalers = {}
     for ticker, name in TARGET_STOCKS.items():
         idx = tickers.index(ticker)
         close_col_idx = idx * len(FEATURES) + TARGET_FEATURE_IDX
-        target_scaler = MinMaxScaler()
+        target_scaler = StandardScaler() # 这里也要同步改为 StandardScaler
         target_scaler.fit(train_data[:, close_col_idx].reshape(-1, 1))
         close_scalers[ticker] = target_scaler
 
+    # 制作滑动窗口
     X_train, Y_train = build_sliding_windows(train_scaled, LOOK_BACK)
     X_test, Y_test = build_sliding_windows(test_scaled, LOOK_BACK)
     
     X_train = X_train.reshape(-1, LOOK_BACK, num_nodes, len(FEATURES))
     X_test = X_test.reshape(-1, LOOK_BACK, num_nodes, len(FEATURES))
     
+    # 提取测试集的真实时间轴，以对齐预测结果保存
+    num_samples = len(X_test)
+    test_times = combined_df.index[-num_samples:]
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"\n💡 硬件检测: 当前使用设备 -> {device}")
     if device.type == 'cuda':
@@ -120,71 +154,97 @@ def train_and_evaluate():
     test_dataset = TensorDataset(X_test_t, Y_test_t)
     test_loader = DataLoader(test_dataset, batch_size=BATCH_SIZE, shuffle=False)
 
-    T_k_tensors = compute_chebyshev_polynomials(adj_matrix, K=K_ORDER)
-    T_k_tensors = [t.to(device) for t in T_k_tensors]
-    
-    model = ST_Trader(num_nodes=num_nodes, 
-                      input_dim=len(FEATURES), 
-                      hidden_dim=HIDDEN_DIM, 
-                      K=K_ORDER, 
-                      T_k_tensors=T_k_tensors).to(device)
-                      
-    optimizer = torch.optim.Adam(model.parameters(), lr=LR)
-    criterion = nn.MSELoss()
-
-    print(f"\n🚀 开始在 GPU 上分批训练 GCN-LSTM (Epochs={EPOCHS}, Batch={BATCH_SIZE})...")
-    target_idx_list = list(target_indices.values())
-    
-    for epoch in range(EPOCHS):
-        model.train()
-        epoch_loss = 0.0
+    # ---------------- 步骤 2：遍历 4 种拓扑图，分别训练和评估 ----------------
+    for graph_file in GRAPH_FILES:
+        # 解析出图类型名称，如 "adj_vae.npy" -> "vae"
+        graph_type = graph_file.replace("adj_", "").replace(".npy", "")
         
-        for batch_x, batch_y in train_loader:
-            optimizer.zero_grad()
-            outputs = model(batch_x) 
-            loss = criterion(outputs[:, target_idx_list], batch_y[:, target_idx_list])
-            loss.backward()
-            optimizer.step()
-            epoch_loss += loss.item()
+        print(f"\n{'='*70}")
+        print(f"🚀 开始消融实验分支: 注入拓扑图 -> 【{graph_type.upper()} GRAPH】")
+        print(f"{'='*70}")
+
+        # 载入特定的图结构
+        adj_matrix = np.load(os.path.join(GRAPH_DIR, graph_file))
+        
+        # 计算该图的切比雪夫多项式
+        T_k_tensors = compute_chebyshev_polynomials(adj_matrix, K=K_ORDER)
+        T_k_tensors = [t.to(device) for t in T_k_tensors]
+        
+        model = ST_Trader(num_nodes=num_nodes, 
+                          input_dim=len(FEATURES), 
+                          hidden_dim=HIDDEN_DIM, 
+                          K=K_ORDER, 
+                          T_k_tensors=T_k_tensors).to(device)
+                          
+        optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+        criterion = nn.MSELoss()
+
+        print(f"正在 GPU 上分批训练 GCN-LSTM (Epochs={EPOCHS}, Batch={BATCH_SIZE})...")
+        target_idx_list = list(target_indices.values())
+        
+        # 训练过程
+        for epoch in range(EPOCHS):
+            model.train()
+            epoch_loss = 0.0
             
-        if (epoch + 1) % 5 == 0:
-            avg_loss = epoch_loss / len(train_loader)
-            print(f"Epoch [{epoch+1:03d}/{EPOCHS}], Loss: {avg_loss:.6f}")
+            for batch_x, batch_y in train_loader:
+                optimizer.zero_grad()
+                outputs = model(batch_x) 
+                loss = criterion(outputs[:, target_idx_list], batch_y[:, target_idx_list])
+                loss.backward()
+                optimizer.step()
+                epoch_loss += loss.item()
+                
+            # 每 10 轮打印一次，保持终端清爽
+            if (epoch + 1) % 10 == 0:
+                avg_loss = epoch_loss / len(train_loader)
+                print(f"[{graph_type.upper()}] Epoch [{epoch+1:03d}/{EPOCHS}], Loss: {avg_loss:.6f}")
 
-    print("\n🔬 正在测试集上进行分批推理...")
-    model.eval()
-    test_preds = []
-    
-    with torch.no_grad():
-        for batch_x, _ in test_loader:
-            preds = model(batch_x).cpu().numpy()
-            test_preds.append(preds)
+        # 评估过程
+        print(f"🔬 正在 【{graph_type.upper()}】 结构下进行测试集推理...")
+        model.eval()
+        test_preds = []
+        
+        with torch.no_grad():
+            for batch_x, _ in test_loader:
+                preds = model(batch_x).cpu().numpy()
+                test_preds.append(preds)
+                
+        test_preds = np.concatenate(test_preds, axis=0)
+        test_trues = Y_test_t.cpu().numpy()
+
+        for ticker, name in TARGET_STOCKS.items():
+            idx = target_indices[ticker]
             
-    test_preds = np.concatenate(test_preds, axis=0)
-    test_trues = Y_test_t.cpu().numpy()
+            pred_scaled = test_preds[:, idx].reshape(-1, 1)
+            true_scaled = test_trues[:, idx].reshape(-1, 1)
+            
+            pred_real = close_scalers[ticker].inverse_transform(pred_scaled).flatten()
+            true_real = close_scalers[ticker].inverse_transform(true_scaled).flatten()
+            
+            df_out = pd.DataFrame({
+                'trade_time': test_times,
+                'True_Price': true_real,
+                'Predicted_Price': pred_real
+            })
+            
+            # 【核心修改】：按照要求进行命名，如 STTrader-vae_STK_000001.SZ_predictions.csv
+            save_filename = f"STTrader-{graph_type}_STK_{ticker}_predictions.csv"
+            df_out.to_csv(os.path.join(PRED_DIR, save_filename), index=False, encoding='utf-8-sig')
+            
+            # 指标文件的 tag 也同步修改
+            model_tag = f"STTrader-{graph_type}_STK_{ticker}"
+            metrics = calculate_metrics(true_real, pred_real)
+            print_metrics(metrics, model_name=model_tag)
+            save_metrics(metrics, model_name=model_tag, save_dir=METRICS_DIR)
+            
+        print(f"✅ 图结构 【{graph_type.upper()}】 训练与验证收官！数据已归档。")
 
-    for ticker, name in TARGET_STOCKS.items():
-        idx = target_indices[ticker]
-        
-        pred_scaled = test_preds[:, idx].reshape(-1, 1)
-        true_scaled = test_trues[:, idx].reshape(-1, 1)
-        
-        pred_real = close_scalers[ticker].inverse_transform(pred_scaled).flatten()
-        true_real = close_scalers[ticker].inverse_transform(true_scaled).flatten()
-        
-        df_out = pd.DataFrame({
-            'True_Price': true_real,
-            'Predicted_Price': pred_real
-        })
-        save_filename = f"STtrader_STK_{ticker}_predictions.csv"
-        df_out.to_csv(os.path.join(PRED_DIR, save_filename), index=False)
-        
-        model_tag = f"ST-Trader_{ticker}"
-        metrics = calculate_metrics(true_real, pred_real)
-        print_metrics(metrics, model_name=model_tag)
-        save_metrics(metrics, model_name=model_tag, save_dir=METRICS_DIR)
+        # 强制清空显存，释放空间给下一个图网络
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
-    print("\n🎉 全部流程执行完毕！预测曲线数据已就绪，可以运行 plot_predictions.py 了！")
+    print("\n🎉 全部 4 种空间拓扑图的消融实验流已彻底执行完毕！")
 
 if __name__ == "__main__":
-    train_and_evaluate()
+    train_and_evaluate_all_graphs()

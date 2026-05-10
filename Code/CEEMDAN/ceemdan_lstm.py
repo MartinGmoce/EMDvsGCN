@@ -32,14 +32,15 @@ TEST_FILES = [
     "CEEMDAN_IDX_000001.SH_上证指数_1min.csv"
 ]
 
-# 超参数
+# ================= 超参数 (专为 RTX 4090 优化) =================
 SEQ_LEN = 60
-BATCH_SIZE = 128
+BATCH_SIZE = 1024      # [修改] 从128提升至1024：LSTM很轻，4090显存极大，大Batch能极速缩短训练时间
 HIDDEN_SIZE = 64
 NUM_LAYERS = 2
 EPOCHS = 15
 LR = 0.001
 TRAIN_RATIO = 0.8
+NUM_WORKERS = 8        # [新增] 动用 8 个 CPU 核心来搬运数据
 
 # ================= 标准 LSTM 模型 =================
 class PureLSTM(nn.Module):
@@ -63,7 +64,7 @@ def build_windows(data, seq_len):
 # ================= 单个数据集的执行逻辑 =================
 def run_ceemdan_lstm_for_single_stock(test_file):
     stock_id = test_file.replace("CEEMDAN_", "").replace("_1min.csv", "")
-    model_id = f"CEEMDAN_LSTM_{stock_id}"
+    model_id = f"CEEMDANLSTM_{stock_id}"
 
     file_path = os.path.join(CEEMDAN_DATA_DIR, test_file)
     if not os.path.exists(file_path):
@@ -99,10 +100,21 @@ def run_ceemdan_lstm_for_single_stock(test_file):
         X_train, Y_train = build_windows(train_scaled, SEQ_LEN)
         X_test, Y_test = build_windows(test_scaled, SEQ_LEN)
         
-        train_loader = DataLoader(TensorDataset(torch.FloatTensor(X_train), torch.FloatTensor(Y_train)), 
-                                  batch_size=BATCH_SIZE, shuffle=True)
-        test_loader = DataLoader(TensorDataset(torch.FloatTensor(X_test), torch.FloatTensor(Y_test)), 
-                                 batch_size=BATCH_SIZE, shuffle=False)
+        # [修改] 加入 num_workers 和 pin_memory，极大加速 CPU 向 GPU 喂数据的速度
+        train_loader = DataLoader(
+            TensorDataset(torch.FloatTensor(X_train), torch.FloatTensor(Y_train)), 
+            batch_size=BATCH_SIZE, 
+            shuffle=True,
+            num_workers=NUM_WORKERS,
+            pin_memory=True
+        )
+        test_loader = DataLoader(
+            TensorDataset(torch.FloatTensor(X_test), torch.FloatTensor(Y_test)), 
+            batch_size=BATCH_SIZE, 
+            shuffle=False,
+            num_workers=NUM_WORKERS,
+            pin_memory=True
+        )
         
         model = PureLSTM(input_size=1, hidden_size=HIDDEN_SIZE, num_layers=NUM_LAYERS).to(device)
         optimizer = torch.optim.Adam(model.parameters(), lr=LR)
@@ -112,7 +124,7 @@ def run_ceemdan_lstm_for_single_stock(test_file):
         for epoch in range(EPOCHS):
             for bx, by in train_loader:
                 optimizer.zero_grad()
-                loss = criterion(model(bx.to(device)), by.to(device))
+                loss = criterion(model(bx.to(device, non_blocking=True)), by.to(device, non_blocking=True))
                 loss.backward()
                 optimizer.step()
                 
@@ -121,7 +133,7 @@ def run_ceemdan_lstm_for_single_stock(test_file):
         preds, trues = [], []
         with torch.no_grad():
             for bx, by in test_loader:
-                preds.append(model(bx.to(device)).cpu().numpy())
+                preds.append(model(bx.to(device, non_blocking=True)).cpu().numpy())
                 trues.append(by.numpy())
                 
         preds = scaler.inverse_transform(np.concatenate(preds))
@@ -133,6 +145,11 @@ def run_ceemdan_lstm_for_single_stock(test_file):
             
         final_sum_preds += preds
         final_sum_trues += trues
+
+        # [核心修改：防爆显存机制移位] 
+        # 移至内层循环，每个分量跑完立即清理！
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
     print("\n✅ 所有分量重构完毕！计算整体误差...")
     final_preds = final_sum_preds.flatten()
@@ -160,7 +177,7 @@ def run_ceemdan_lstm_for_single_stock(test_file):
     df_results.to_csv(save_csv_path, index=False, encoding='utf-8-sig')
     print(f"✅ [{model_id}] 预测曲线数据 (共 {num_samples} 行) 已保存至: {save_csv_path}")
 
-    # 清理显存
+    # 整个股票处理完再清一次
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
