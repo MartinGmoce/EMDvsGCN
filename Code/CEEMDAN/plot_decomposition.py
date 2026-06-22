@@ -1,16 +1,25 @@
 import os
+import sys
+from pathlib import Path
 import pandas as pd
+
+CODE_DIR = Path(__file__).resolve().parents[1]
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
+
+from project_config import CEEMDAN_DATA_DIR, DECOMPOSITION_PLOTS_DIR, configure_matplotlib_backend, ensure_directories
+
+configure_matplotlib_backend()
 import matplotlib.pyplot as plt
 
 # ================= 配置区域 =================
 plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'Helvetica', 'sans-serif']
 plt.rcParams['axes.unicode_minus'] = False 
 
-PROJECT_ROOT = "/Users/martingao/VScode/EMDvsGCN"
-CEEMDAN_DIR = os.path.join(PROJECT_ROOT, "Data", "CEEMDAN_Decomposed")
-PLOT_SAVE_DIR = os.path.join(PROJECT_ROOT, "Results", "Decompositions") # 存到你建好的分类目录里
+CEEMDAN_DIR = CEEMDAN_DATA_DIR
+PLOT_SAVE_DIR = DECOMPOSITION_PLOTS_DIR
 
-os.makedirs(PLOT_SAVE_DIR, exist_ok=True)
+ensure_directories(PLOT_SAVE_DIR)
 
 def generate_english_title(filename):
     filename_clean = filename.replace("CEEMDAN_", "").replace("_1min.csv", "")

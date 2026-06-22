@@ -1,14 +1,21 @@
 import os
+import sys
+from pathlib import Path
 import pandas as pd
 import numpy as np
 from scipy.signal import find_peaks
 
-# ================= 配置路径 =================
-PROJECT_ROOT = "/Users/martingao/VScode/EMDvsGCN"
-PRED_DIR = os.path.join(PROJECT_ROOT, "Results", "Predictions")
-METRICS_SAVE_DIR = os.path.join(PROJECT_ROOT, "Results", "AnalysisResults")
+CODE_DIR = Path(__file__).resolve().parents[1]
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
 
-os.makedirs(METRICS_SAVE_DIR, exist_ok=True)
+from project_config import ANALYSIS_RESULTS_DIR, PREDICTIONS_DIR, ensure_directories
+
+# ================= 配置路径 =================
+PRED_DIR = PREDICTIONS_DIR
+METRICS_SAVE_DIR = ANALYSIS_RESULTS_DIR
+
+ensure_directories(METRICS_SAVE_DIR)
 
 def calculate_ccf_lag(y_true, y_pred, max_lag=5):
     """
@@ -80,7 +87,10 @@ def generate_delay_metrics():
     save_path = os.path.join(METRICS_SAVE_DIR, "phase_delay_metrics.csv")
     df_metrics.to_csv(save_path, index=False, encoding='utf-8-sig')
     print("\n✅ 相位延迟计算完毕！预览：")
-    print(df_metrics.to_markdown(index=False))
+    if hasattr(df_metrics, "to_markdown"):
+        print(df_metrics.to_markdown(index=False))
+    else:
+        print(df_metrics.to_string(index=False))
 
 if __name__ == "__main__":
     generate_delay_metrics()

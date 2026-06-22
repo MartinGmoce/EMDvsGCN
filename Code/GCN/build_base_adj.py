@@ -1,17 +1,24 @@
 import os
+import sys
+from pathlib import Path
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
 
-# ================= 配置 =================
-PROJECT_ROOT = "/Users/martingao/VScode/EMDvsGCN"
-GRAPH_DIR = os.path.join(PROJECT_ROOT, "Results", "VAE_Features")
-# 复用你之前代码中的 PLOT_SAVE_DIR 路径，确保图片保存在一起
-PLOT_SAVE_DIR = os.path.join(PROJECT_ROOT, "Results", "VAE_Features")
+CODE_DIR = Path(__file__).resolve().parents[1]
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
 
-os.makedirs(GRAPH_DIR, exist_ok=True)
-os.makedirs(PLOT_SAVE_DIR, exist_ok=True)
+from project_config import VAE_FEATURES_DIR, configure_matplotlib_backend, ensure_directories
+
+configure_matplotlib_backend()
+import matplotlib.pyplot as plt
+
+# ================= 配置 =================
+GRAPH_DIR = VAE_FEATURES_DIR
+PLOT_SAVE_DIR = VAE_FEATURES_DIR
+
+ensure_directories(GRAPH_DIR, PLOT_SAVE_DIR)
 
 # 读取你之前保存的节点列表以确定维度
 df_adj = pd.read_csv(os.path.join(GRAPH_DIR, "adj_vae.csv"), index_col=0)
@@ -51,7 +58,7 @@ def generate_baseline_graphs():
     print("✅ 成功生成 Random-Graph (随机对称矩阵)")
 
     # 3. Pearson Graph (全连接相关系数图)
-    features_df = pd.read_csv(os.path.join(PROJECT_ROOT, "Results", "VAE_Features", "fundamental_features.csv"))
+    features_df = pd.read_csv(os.path.join(GRAPH_DIR, "fundamental_features.csv"))
     feats_only = features_df.drop(columns=['ticker', 'name']).astype(float).values
     adj_pearson = np.corrcoef(feats_only)
     adj_pearson = np.abs(adj_pearson)

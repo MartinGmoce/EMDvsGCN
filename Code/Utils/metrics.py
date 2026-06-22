@@ -1,6 +1,16 @@
 import os
+import numpy as np
 import pandas as pd
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, mean_absolute_percentage_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+
+try:
+    from sklearn.metrics import mean_absolute_percentage_error
+except ImportError:
+    def mean_absolute_percentage_error(y_true, y_pred):
+        y_true = np.asarray(y_true)
+        y_pred = np.asarray(y_pred)
+        denominator = np.maximum(np.abs(y_true), np.finfo(float).eps)
+        return np.mean(np.abs((y_true - y_pred) / denominator))
 
 def calculate_metrics(y_true, y_pred):
     """

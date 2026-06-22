@@ -1,14 +1,22 @@
 import os
+import sys
 import time
+from pathlib import Path
 import tushare as ts
 import pandas as pd
 
-# ================= 配置区域 =================
-PROJECT_ROOT = "/Users/martingao/VScode/EMDvsGCN"
-RAW_DATA_DIR = os.path.join(PROJECT_ROOT, "Data", "Raw")
-os.makedirs(RAW_DATA_DIR, exist_ok=True)
+CODE_DIR = Path(__file__).resolve().parents[1]
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
 
-TOKEN = "fa7e5b0b03f653cda8eaaa707a59eb0cea10cabce18914187b2935b9214b"
+from project_config import RAW_DATA_DIR, ensure_directories
+
+# ================= 配置区域 =================
+ensure_directories(RAW_DATA_DIR)
+
+TOKEN = os.getenv("TUSHARE_TOKEN")
+if not TOKEN:
+    raise RuntimeError("请先设置环境变量 TUSHARE_TOKEN，再运行数据抓取脚本。")
 
 # 按照第三方镜像站要求初始化 pro
 pro = ts.pro_api(TOKEN)

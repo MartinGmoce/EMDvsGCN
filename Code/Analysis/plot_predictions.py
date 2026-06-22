@@ -1,18 +1,27 @@
 import os
+import sys
+from pathlib import Path
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
+
+CODE_DIR = Path(__file__).resolve().parents[1]
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
+
+from project_config import FORECAST_PLOTS_DIR, PREDICTIONS_DIR, configure_matplotlib_backend, ensure_directories
+
+configure_matplotlib_backend()
+import matplotlib.pyplot as plt
 
 # ================= Font Configuration (English Only) =================
 plt.rcParams['font.sans-serif'] = ['DejaVu Sans', 'Arial', 'Helvetica', 'sans-serif']
 plt.rcParams['axes.unicode_minus'] = False 
 
 # ================= Configuration =================
-PROJECT_ROOT = "/Users/martingao/VScode/EMDvsGCN"
-PRED_DIR = os.path.join(PROJECT_ROOT, "Results", "Predictions")
-PLOT_SAVE_DIR = os.path.join(PROJECT_ROOT, "Results", "ForecastPlots")
+PRED_DIR = PREDICTIONS_DIR
+PLOT_SAVE_DIR = FORECAST_PLOTS_DIR
 
-os.makedirs(PLOT_SAVE_DIR, exist_ok=True)
+ensure_directories(PLOT_SAVE_DIR)
 
 BLUE = '#1f77b4'  
 RED = '#d62728'   

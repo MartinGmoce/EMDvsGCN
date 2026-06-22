@@ -1,10 +1,17 @@
 import os
 import glob
+import sys
+from pathlib import Path
 import pandas as pd
 
+CODE_DIR = Path(__file__).resolve().parents[1]
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
+
+from project_config import GCN_DATA_DIR
+
 # ================= 配置区域 =================
-# 您指定的 GCN 数据存放目录
-TARGET_DIR = "/Users/martingao/VScode/EMDvsGCN/Data/GCN"
+TARGET_DIR = GCN_DATA_DIR
 
 def fix_code_column():
     print(f"{'='*50}")

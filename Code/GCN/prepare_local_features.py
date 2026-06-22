@@ -1,14 +1,20 @@
 import os
 import glob
+import sys
+from pathlib import Path
 import pandas as pd
 import numpy as np
 
+CODE_DIR = Path(__file__).resolve().parents[1]
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
+
+from project_config import GCN_DATA_DIR, VAE_FEATURES_DIR, ensure_directories
+
 # ================= 配置区域 =================
-# 您存放 GCN 分钟线数据的文件夹
-GCN_DIR = "/Users/martingao/VScode/EMDvsGCN/Data/GCN" 
-# 生成的 VAE 特征存放文件夹
-TARGET_DIR = "/Users/martingao/VScode/EMDvsGCN/Results/VAE_Features"
-os.makedirs(TARGET_DIR, exist_ok=True)
+GCN_DIR = GCN_DATA_DIR
+TARGET_DIR = VAE_FEATURES_DIR
+ensure_directories(TARGET_DIR)
 
 # 沿用极其严格的行业映射字典 (作为 VAE 的先验分类特征)
 SECTOR_DICT = {

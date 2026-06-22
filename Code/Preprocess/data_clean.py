@@ -1,12 +1,17 @@
 import os
 import glob
+import sys
+from pathlib import Path
 import pandas as pd
 
+CODE_DIR = Path(__file__).resolve().parents[1]
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
+
+from project_config import PROCESSED_DATA_DIR, RAW_DATA_DIR, ensure_directories
+
 # ================= 配置区域 =================
-PROJECT_ROOT = "/Users/martingao/VScode/EMDvsGCN"
-RAW_DATA_DIR = os.path.join(PROJECT_ROOT, "Data", "Raw")
-PROCESSED_DATA_DIR = os.path.join(PROJECT_ROOT, "Data", "Processed")
-os.makedirs(PROCESSED_DATA_DIR, exist_ok=True)
+ensure_directories(PROCESSED_DATA_DIR)
 
 # 需要保留的特征列（保留真实绝对值）
 FEATURE_COLS = ['open', 'high', 'low', 'close', 'vol', 'amount']

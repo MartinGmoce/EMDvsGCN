@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,22 +10,21 @@ import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import TensorDataset, DataLoader
 
-# 挂载项目路径
-PROJECT_ROOT = "/Users/martingao/VScode/EMDvsGCN"
-sys.path.append(os.path.join(PROJECT_ROOT, "Code"))
+CODE_DIR = Path(__file__).resolve().parents[1]
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
+
+from project_config import CHECKPOINT_DIR, METRICS_DIR, PREDICTIONS_DIR, PROCESSED_DATA_DIR, ensure_directories
 
 from Baseline.rnn_family import RNNFamilyModel
 from Utils.metrics import calculate_metrics, print_metrics, save_metrics
 
 # ================= 配置区域 =================
-PROCESSED_DATA_DIR = os.path.join(PROJECT_ROOT, "Data", "Processed")
-MODEL_SAVE_DIR = os.path.join(PROJECT_ROOT, "Results", "Checkpoints")
-PRED_SAVE_DIR = os.path.join(PROJECT_ROOT, "Results", "Predictions")
-METRICS_SAVE_DIR = os.path.join(PROJECT_ROOT, "Results", "Metrics")
+MODEL_SAVE_DIR = CHECKPOINT_DIR
+PRED_SAVE_DIR = PREDICTIONS_DIR
+METRICS_SAVE_DIR = METRICS_DIR
 
-os.makedirs(MODEL_SAVE_DIR, exist_ok=True)
-os.makedirs(PRED_SAVE_DIR, exist_ok=True)
-os.makedirs(METRICS_SAVE_DIR, exist_ok=True)
+ensure_directories(MODEL_SAVE_DIR, PRED_SAVE_DIR, METRICS_SAVE_DIR)
 
 # 严格遵循文献设定的参数
 SEQ_LEN = 512       # Look-back length (L)

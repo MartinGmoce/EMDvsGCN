@@ -1,15 +1,31 @@
 import os
+import sys
+from pathlib import Path
+import numpy as np
 import pandas as pd
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, mean_absolute_percentage_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+
+try:
+    from sklearn.metrics import mean_absolute_percentage_error
+except ImportError:
+    def mean_absolute_percentage_error(y_true, y_pred):
+        y_true = np.asarray(y_true)
+        y_pred = np.asarray(y_pred)
+        denominator = np.maximum(np.abs(y_true), np.finfo(float).eps)
+        return np.mean(np.abs((y_true - y_pred) / denominator))
+
+CODE_DIR = Path(__file__).resolve().parents[1]
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
+
+from project_config import ANALYSIS_RESULTS_DIR, PREDICTIONS_DIR, ensure_directories
 
 # ================= 配置路径 =================
-# 自动获取当前项目根目录
-PROJECT_ROOT = "/Users/martingao/VScode/EMDvsGCN"
-PRED_DIR = os.path.join(PROJECT_ROOT, "Results", "Predictions")
-METRICS_SAVE_DIR = os.path.join(PROJECT_ROOT, "Results", "AnalysisResults")
+PRED_DIR = PREDICTIONS_DIR
+METRICS_SAVE_DIR = ANALYSIS_RESULTS_DIR
 
 # 确保保存目录存在
-os.makedirs(METRICS_SAVE_DIR, exist_ok=True)
+ensure_directories(METRICS_SAVE_DIR)
 
 def calculate_metrics(y_true, y_pred):
     """
@@ -86,7 +102,10 @@ def generate_total_metrics():
     
     # 在终端打印一个漂亮的 Markdown 表格预览
     print("\n✅ 所有指标计算完毕！预览如下：")
-    print(total_metrics_df.to_markdown(index=False))
+    if hasattr(total_metrics_df, "to_markdown"):
+        print(total_metrics_df.to_markdown(index=False))
+    else:
+        print(total_metrics_df.to_string(index=False))
     print(f"\n💾 汇总结果已成功保存至: {save_path}")
 
 if __name__ == "__main__":

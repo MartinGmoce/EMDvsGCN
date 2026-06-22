@@ -1,22 +1,29 @@
 import os
+import sys
+from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import pairwise_distances
 
-# ================= 配置区域 =================
-# 请确保此路径与您生成特征文件的路径一致
-PROJECT_ROOT = "/Users/martingao/VScode/EMDvsGCN"
-FUNDAMENTAL_FILE = "/Users/martingao/VScode/EMDvsGCN/Results/VAE_Features/fundamental_features.csv"
-MATRIX_SAVE_DIR = os.path.join(PROJECT_ROOT, "Results", "VAE_Features")   
-PLOT_SAVE_DIR = os.path.join(PROJECT_ROOT, "Results", "VAE_Features")
+CODE_DIR = Path(__file__).resolve().parents[1]
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
 
-os.makedirs(MATRIX_SAVE_DIR, exist_ok=True)
-os.makedirs(PLOT_SAVE_DIR, exist_ok=True)
+from project_config import VAE_FEATURES_DIR, configure_matplotlib_backend, ensure_directories
+
+configure_matplotlib_backend()
+import matplotlib.pyplot as plt
+
+# ================= 配置区域 =================
+FUNDAMENTAL_FILE = VAE_FEATURES_DIR / "fundamental_features.csv"
+MATRIX_SAVE_DIR = VAE_FEATURES_DIR
+PLOT_SAVE_DIR = VAE_FEATURES_DIR
+
+ensure_directories(MATRIX_SAVE_DIR, PLOT_SAVE_DIR)
 
 # 论文指定的超参数 [cite: 270]
 LATENT_DIM = 16          # 隐空间维度 h=16

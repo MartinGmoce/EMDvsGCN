@@ -1,16 +1,19 @@
 import os
 import sys
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from PyEMD import CEEMDAN
 import time
 
-# ================= 配置区域 =================
-PROJECT_ROOT = "/Users/martingao/VScode/EMDvsGCN"
-PROCESSED_DATA_DIR = os.path.join(PROJECT_ROOT, "Data", "Processed")
-CEEMDAN_DATA_DIR = os.path.join(PROJECT_ROOT, "Data", "CEEMDAN_Decomposed")
+CODE_DIR = Path(__file__).resolve().parents[1]
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
 
-os.makedirs(CEEMDAN_DATA_DIR, exist_ok=True)
+from project_config import CEEMDAN_DATA_DIR, PROCESSED_DATA_DIR, ensure_directories
+
+# ================= 配置区域 =================
+ensure_directories(CEEMDAN_DATA_DIR)
 
 # 批量待分解文件列表
 TEST_FILES = [

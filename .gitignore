@@ -1,5 +1,11 @@
 # 忽略服务器下载的压缩包
 *.zip
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
 
 # 忽略庞大的预测张量和模型权重
 Results/**/*.npy
@@ -8,3 +14,4 @@ Results/Checkpoints/
 
 # (如果你之前没加) 忽略庞大的原始数据
 # Data/
+Data/GCN_Source/

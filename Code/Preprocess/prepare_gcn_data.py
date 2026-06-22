@@ -1,16 +1,24 @@
 import os
+import sys
+from pathlib import Path
 import pandas as pd
 import glob
 
+CODE_DIR = Path(__file__).resolve().parents[1]
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
+
+from project_config import DATA_DIR, GCN_DATA_DIR, ensure_directories
+
 # ================= 配置区域 =================
-BASE_DIR = "/Users/martingao/Documents/毕业论文/数据"
+BASE_DIR = Path(os.getenv("GCN_SOURCE_DIR", DATA_DIR / "GCN_Source"))
 SOURCE_FOLDERS = ['202210', '202211', '202212', '202301']
-TARGET_DIR = os.path.join(BASE_DIR, 'GCN')
+TARGET_DIR = GCN_DATA_DIR
 
 START_DATE = '2022-10-17'
 END_DATE = '2023-01-04'
 
-os.makedirs(TARGET_DIR, exist_ok=True)
+ensure_directories(TARGET_DIR)
 
 # 完整补齐 32 只节点股票字典 (完整代码 : 名称)
 STOCKS = {

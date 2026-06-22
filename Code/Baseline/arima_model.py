@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from statsmodels.tsa.arima.model import ARIMA
@@ -11,17 +12,18 @@ import warnings
 warnings.filterwarnings("ignore")
 
 # 引入通用指标计算模块
-PROJECT_ROOT = "/Users/martingao/VScode/EMDvsGCN"
-sys.path.append(os.path.join(PROJECT_ROOT, "Code"))
+CODE_DIR = Path(__file__).resolve().parents[1]
+if str(CODE_DIR) not in sys.path:
+    sys.path.insert(0, str(CODE_DIR))
+
+from project_config import METRICS_DIR, PREDICTIONS_DIR, PROCESSED_DATA_DIR, ensure_directories
 from Utils.metrics import calculate_metrics, print_metrics, save_metrics
 
 # ================= 配置区域 =================
-PROCESSED_DATA_DIR = os.path.join(PROJECT_ROOT, "Data", "Processed")
-PRED_SAVE_DIR = os.path.join(PROJECT_ROOT, "Results", "Predictions")
-METRICS_SAVE_DIR = os.path.join(PROJECT_ROOT, "Results", "Metrics") 
+PRED_SAVE_DIR = PREDICTIONS_DIR
+METRICS_SAVE_DIR = METRICS_DIR 
 
-os.makedirs(PRED_SAVE_DIR, exist_ok=True)
-os.makedirs(METRICS_SAVE_DIR, exist_ok=True)
+ensure_directories(PRED_SAVE_DIR, METRICS_SAVE_DIR)
 
 # ARIMA 参数设置
 SEQ_LEN = 512       
